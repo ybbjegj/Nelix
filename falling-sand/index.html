@@ -1,0 +1,1582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>沙粒模拟器 — 落沙游戏</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #1a1a2e;
+    --panel: #16213e;
+    --panel-border: #0f3460;
+    --accent: #e94560;
+    --accent-glow: rgba(233,69,96,.35);
+    --text: #eee;
+    --text-dim: #aab;
+    --success: #4caf50;
+    --gold: #f5a623;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  h1 {
+    font-size: 1.3rem;
+    padding: 8px 0 4px;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #e94560, #f5a623, #e94560);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  #toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 12px;
+    max-width: 100%;
+  }
+
+  .mat-btn {
+    position: relative;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 6px 12px 6px 30px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--panel);
+    color: var(--text);
+    transition: border-color .15s, transform .1s, box-shadow .15s;
+    white-space: nowrap;
+  }
+  .mat-btn:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.4); }
+  .mat-btn.active { border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
+  .mat-btn .swatch {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,.15);
+  }
+  .mat-btn .shortcut-hint {
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    margin-left: 4px;
+    opacity: 0.6;
+  }
+
+  #controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 12px 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #controls label {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #controls input[type=range] {
+    width: 90px;
+    accent-color: var(--accent);
+  }
+  .ctrl-btn {
+    padding: 5px 14px;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: background .15s;
+  }
+  .ctrl-btn:hover { background: var(--accent); }
+  .ctrl-btn.mode-active {
+    border-color: var(--gold);
+    box-shadow: 0 0 8px rgba(245,166,35,.3);
+    color: var(--gold);
+  }
+
+  #stats {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    padding: 0 0 2px;
+  }
+
+  #canvas-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    min-height: 0;
+    position: relative;
+  }
+
+  canvas {
+    background: #0a0a14;
+    border-radius: 6px;
+    border: 1px solid var(--panel-border);
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  /* ─── Help overlay ─── */
+  #help-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(10,10,20,0.85);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+  #help-overlay.show { display: flex; }
+
+  #help-panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    max-width: 680px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 28px 32px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.6);
+    position: relative;
+  }
+  #help-panel::-webkit-scrollbar { width: 6px; }
+  #help-panel::-webkit-scrollbar-track { background: transparent; }
+  #help-panel::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 3px; }
+
+  #help-panel h2 {
+    font-size: 1.4rem;
+    margin-bottom: 16px;
+    background: linear-gradient(90deg, #e94560, #f5a623);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  #help-panel h3 {
+    font-size: 1rem;
+    color: var(--accent);
+    margin: 18px 0 8px;
+    border-bottom: 1px solid var(--panel-border);
+    padding-bottom: 4px;
+  }
+  #help-panel p, #help-panel li {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+  #help-panel ul { padding-left: 18px; }
+  #help-panel li { margin-bottom: 4px; }
+  #help-panel .key-tag {
+    display: inline-block;
+    background: #0f3460;
+    color: var(--text);
+    font-size: 0.75rem;
+    padding: 1px 7px;
+    border-radius: 4px;
+    margin: 0 2px;
+    font-family: monospace;
+    border: 1px solid #1a4a8a;
+  }
+  #help-panel .interaction-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 16px;
+    margin-top: 6px;
+  }
+  #help-panel .interaction-item {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    padding: 4px 0;
+  }
+  #help-panel .interaction-item span {
+    color: var(--gold);
+  }
+
+  #help-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: color .15s;
+  }
+  #help-close:hover { color: var(--accent); }
+
+  /* ─── Challenge Mode UI ─── */
+  #challenge-bar {
+    display: none;
+    align-items: center;
+    gap: 14px;
+    padding: 5px 16px;
+    background: linear-gradient(90deg, rgba(15,52,96,.6), rgba(22,33,62,.8));
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    margin: 2px 0;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #challenge-bar.show { display: flex; }
+  #challenge-bar .level-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--gold);
+  }
+  #challenge-bar .level-desc {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    flex: 1;
+    min-width: 120px;
+  }
+  #challenge-bar .level-progress {
+    font-size: 0.75rem;
+    color: var(--text);
+    min-width: 80px;
+    text-align: right;
+  }
+
+  #level-select-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(10,10,20,0.85);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+  #level-select-overlay.show { display: flex; }
+
+  #level-select-panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    max-width: 520px;
+    width: 100%;
+    padding: 28px 32px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.6);
+    position: relative;
+  }
+  #level-select-panel h2 {
+    font-size: 1.3rem;
+    margin-bottom: 18px;
+    text-align: center;
+    background: linear-gradient(90deg, #f5a623, #e94560);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .level-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    background: rgba(10,10,25,.3);
+  }
+  .level-card:hover {
+    border-color: var(--accent);
+    background: rgba(233,69,96,.06);
+  }
+  .level-card.completed {
+    border-color: var(--success);
+  }
+  .level-card .level-num {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--accent);
+    min-width: 36px;
+    text-align: center;
+  }
+  .level-card.completed .level-num {
+    color: var(--success);
+  }
+  .level-card .level-info h4 {
+    font-size: 0.9rem;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .level-card .level-info p {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+  .level-card .level-status {
+    margin-left: auto;
+    font-size: 1.1rem;
+  }
+
+  #level-select-close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: color .15s;
+  }
+  #level-select-close:hover { color: var(--accent); }
+
+  /* ─── Win banner ─── */
+  #win-banner {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    z-index: 2000;
+    background: linear-gradient(135deg, #16213e, #0f3460);
+    border: 2px solid var(--gold);
+    border-radius: 16px;
+    padding: 36px 48px;
+    text-align: center;
+    box-shadow: 0 0 60px rgba(245,166,35,.3);
+    opacity: 0;
+    transition: opacity .4s, transform .4s;
+  }
+  #win-banner.show {
+    display: block;
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  #win-banner h2 {
+    font-size: 1.8rem;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, #f5a623, #e94560, #f5a623);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  #win-banner p {
+    font-size: 1rem;
+    color: var(--text-dim);
+    margin-bottom: 18px;
+  }
+  #win-banner button {
+    padding: 8px 24px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin: 0 6px;
+    transition: transform .1s;
+  }
+  #win-banner button:hover { transform: scale(1.05); }
+
+  /* ─── Challenge target line indicator ─── */
+  .target-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: repeating-linear-gradient(90deg, var(--gold), var(--gold) 8px, transparent 8px, transparent 16px);
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0.7;
+  }
+  .target-line::after {
+    content: attr(data-label);
+    position: absolute;
+    right: 4px;
+    top: -16px;
+    font-size: 0.65rem;
+    color: var(--gold);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<h1>🏜️ 落沙模拟器</h1>
+
+<div id="toolbar"></div>
+
+<div id="controls">
+  <label>画笔 <span id="brush-val">3</span>
+    <input type="range" id="brush-size" min="1" max="20" value="3">
+  </label>
+  <button class="ctrl-btn" id="btn-pause">⏸ 暂停</button>
+  <button class="ctrl-btn" id="btn-clear">🗑 清空</button>
+  <button class="ctrl-btn" id="btn-gravity">⬇ 重力</button>
+  <button class="ctrl-btn" id="btn-challenge">🏆 挑战模式</button>
+  <button class="ctrl-btn" id="btn-help">❓ 帮助</button>
+</div>
+
+<div id="challenge-bar">
+  <span class="level-title" id="ch-title"></span>
+  <span class="level-desc" id="ch-desc"></span>
+  <span class="level-progress" id="ch-progress"></span>
+  <button class="ctrl-btn" id="btn-quit-challenge" style="padding:3px 10px;font-size:0.72rem">✕ 退出挑战</button>
+</div>
+
+<div id="stats"></div>
+
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+</div>
+
+<!-- Help Overlay -->
+<div id="help-overlay">
+  <div id="help-panel">
+    <button id="help-close">✕</button>
+    <h2>📖 游戏说明</h2>
+
+    <h3>🖱️ 基本操作</h3>
+    <ul>
+      <li><strong>鼠标左键 / 触屏拖动</strong> — 绘制当前选中的材料</li>
+      <li><strong>滚轮</strong> 或 <span class="key-tag">[</span><span class="key-tag">]</span> — 调整画笔大小</li>
+      <li><span class="key-tag">空格</span> — 暂停 / 继续模拟</li>
+      <li><span class="key-tag">1</span>~<span class="key-tag">0</span>,<span class="key-tag">-</span>,<span class="key-tag">=</span> — 快速切换材料</li>
+      <li><span class="key-tag">H</span> — 打开/关闭帮助面板</li>
+    </ul>
+
+    <h3>🧱 材料一览</h3>
+    <ul>
+      <li>🟡 <strong>沙子</strong> — 受重力下落的颗粒，可堆积成沙堆</li>
+      <li>🔵 <strong>水</strong> — 流体，向下和两侧流动</li>
+      <li>⬜ <strong>石头</strong> — 不受重力影响的固体，可当墙壁使用</li>
+      <li>🔥 <strong>火焰</strong> — 向上飘动，点燃可燃物，会随时间熄灭</li>
+      <li>🟫 <strong>木头</strong> — 不动的固体，可被火焰点燃</li>
+      <li>⬛ <strong>油</strong> — 比水轻的液体，极易燃烧</li>
+      <li>☁️ <strong>蒸汽</strong> — 向上飘散的气体，一段时间后凝结为水</li>
+      <li>💨 <strong>烟雾</strong> — 向上飘散后消失</li>
+      <li>🌋 <strong>熔岩</strong> — 高温液体，点燃可燃物，遇水变蒸汽+石头</li>
+      <li>🌿 <strong>植物</strong> — 接触水会生长，可被火焰点燃</li>
+      <li>🧪 <strong>酸液</strong> — 溶解接触到的大部分材料</li>
+      <li>🧹 <strong>橡皮擦</strong> — 擦除画面上的粒子</li>
+    </ul>
+
+    <h3>⚗️ 材料交互</h3>
+    <div class="interaction-grid">
+      <div class="interaction-item"><span>火 + 木头</span> → 木头燃烧成火+烟雾</div>
+      <div class="interaction-item"><span>火 + 油</span> → 油被点燃</div>
+      <div class="interaction-item"><span>火 + 水</span> → 火熄灭变蒸汽</div>
+      <div class="interaction-item"><span>火 + 植物</span> → 植物燃烧</div>
+      <div class="interaction-item"><span>熔岩 + 水</span> → 蒸汽 + 石头</div>
+      <div class="interaction-item"><span>熔岩 + 可燃物</span> → 可燃物着火</div>
+      <div class="interaction-item"><span>水 + 植物</span> → 植物生长蔓延</div>
+      <div class="interaction-item"><span>酸液 + 任意材料</span> → 溶解该材料</div>
+      <div class="interaction-item"><span>蒸汽（冷却后）</span> → 凝结回水</div>
+      <div class="interaction-item"><span>沙子 + 液体</span> → 沙子沉入液体底部</div>
+    </div>
+
+    <h3>🏆 挑战模式</h3>
+    <p>点击「挑战模式」按钮进入关卡选择界面，完成各种有趣的物理挑战！每一关都有不同的目标和玩法。完成后会显示🌟标记。</p>
+
+    <h3>💡 小提示</h3>
+    <ul>
+      <li>用石头画容器，再往里灌水或沙子，观察物理效果</li>
+      <li>试试在油面上点火，观看壮观的连锁燃烧</li>
+      <li>翻转重力可以创造有趣的反向瀑布效果</li>
+      <li>植物在水旁边会自动生长蔓延</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Level Select Overlay -->
+<div id="level-select-overlay">
+  <div id="level-select-panel">
+    <button id="level-select-close">✕</button>
+    <h2>🏆 挑战关卡</h2>
+    <div id="level-list"></div>
+    <div style="text-align:center;margin-top:14px">
+      <button class="ctrl-btn" id="btn-back-sandbox" style="padding:6px 20px">🏖️ 返回沙盒模式</button>
+    </div>
+  </div>
+</div>
+
+<!-- Win Banner -->
+<div id="win-banner">
+  <h2 id="win-title">🎉 恭喜通关！</h2>
+  <p id="win-desc"></p>
+  <button id="win-next">下一关 ▶</button>
+  <button id="win-menu">关卡列表</button>
+</div>
+
+<script>
+// ─── Configuration ──────────────────────────────────────────
+const CELL = 3;
+const TARGET_FPS = 60;
+
+// ─── Material IDs ───────────────────────────────────────────
+const EMPTY  = 0;
+const SAND   = 1;
+const WATER  = 2;
+const STONE  = 3;
+const FIRE   = 4;
+const WOOD   = 5;
+const OIL    = 6;
+const STEAM  = 7;
+const SMOKE  = 8;
+const LAVA   = 9;
+const PLANT  = 10;
+const ACID   = 11;
+const ERASER = 99;
+
+// ─── Material Metadata (Chinese) ────────────────────────────
+const MATERIALS = {
+  [SAND]:  { name: '沙子',   color: [210,180,80],  swatch: '#d2b450' },
+  [WATER]: { name: '水',     color: [40,100,220],   swatch: '#2864dc' },
+  [STONE]: { name: '石头',   color: [130,130,140],  swatch: '#82828c' },
+  [FIRE]:  { name: '火焰',   color: [255,120,20],   swatch: '#ff7814' },
+  [WOOD]:  { name: '木头',   color: [120,75,35],    swatch: '#784b23' },
+  [OIL]:   { name: '油',     color: [60,45,30],     swatch: '#3c2d1e' },
+  [STEAM]: { name: '蒸汽',   color: [190,200,220],  swatch: '#bec8dc' },
+  [SMOKE]: { name: '烟雾',   color: [70,70,80],     swatch: '#464650' },
+  [LAVA]:  { name: '熔岩',   color: [220,60,10],    swatch: '#dc3c0a' },
+  [PLANT]: { name: '植物',   color: [40,160,50],    swatch: '#28a032' },
+  [ACID]:  { name: '酸液',   color: [130,255,50],   swatch: '#82ff32' },
+  [ERASER]:{ name: '橡皮擦', color: [0,0,0],        swatch: '#222' },
+};
+
+// ─── Canvas Setup ───────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { willReadFrequently: false });
+let W, H;
+
+function resize() {
+  const wrap = document.getElementById('canvas-wrap');
+  const maxW = wrap.clientWidth - 8;
+  const maxH = wrap.clientHeight - 8;
+  W = Math.floor(maxW / CELL);
+  H = Math.floor(maxH / CELL);
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.width = W * CELL + 'px';
+  canvas.style.height = H * CELL + 'px';
+  initGrid();
+}
+
+// ─── Grid (flat typed arrays) ───────────────────────────────
+let grid, colorR, colorG, colorB, life, updated;
+
+function initGrid() {
+  const n = W * H;
+  grid   = new Uint8Array(n);
+  colorR = new Uint8Array(n);
+  colorG = new Uint8Array(n);
+  colorB = new Uint8Array(n);
+  life   = new Int16Array(n);
+  updated = new Uint8Array(n);
+}
+
+function idx(x, y) { return y * W + x; }
+function inBounds(x, y) { return x >= 0 && x < W && y >= 0 && y < H; }
+
+function getCell(x, y) {
+  return inBounds(x, y) ? grid[idx(x, y)] : -1;
+}
+
+function setCell(x, y, mat) {
+  if (!inBounds(x, y)) return;
+  const i = idx(x, y);
+  grid[i] = mat;
+  if (mat === EMPTY) {
+    colorR[i] = colorG[i] = colorB[i] = 0;
+    life[i] = 0;
+    return;
+  }
+  const base = MATERIALS[mat] ? MATERIALS[mat].color : [128,128,128];
+  const v = (Math.random() * 30 - 15) | 0;
+  colorR[i] = Math.max(0, Math.min(255, base[0] + v));
+  colorG[i] = Math.max(0, Math.min(255, base[1] + v));
+  colorB[i] = Math.max(0, Math.min(255, base[2] + v));
+  if (mat === FIRE)  life[i] = 40 + (Math.random() * 60) | 0;
+  if (mat === STEAM) life[i] = 120 + (Math.random() * 120) | 0;
+  if (mat === SMOKE) life[i] = 60 + (Math.random() * 80) | 0;
+}
+
+function swap(x1, y1, x2, y2) {
+  const a = idx(x1, y1), b = idx(x2, y2);
+  let t;
+  t = grid[a]; grid[a] = grid[b]; grid[b] = t;
+  t = colorR[a]; colorR[a] = colorR[b]; colorR[b] = t;
+  t = colorG[a]; colorG[a] = colorG[b]; colorG[b] = t;
+  t = colorB[a]; colorB[a] = colorB[b]; colorB[b] = t;
+  t = life[a]; life[a] = life[b]; life[b] = t;
+  updated[a] = updated[b] = 1;
+}
+
+// ─── Physics helpers ────────────────────────────────────────
+function isLiquid(m) { return m === WATER || m === OIL || m === ACID || m === LAVA; }
+function isGas(m) { return m === STEAM || m === SMOKE; }
+function isEmpty(m) { return m === EMPTY; }
+function isFlammable(m) { return m === WOOD || m === OIL || m === PLANT; }
+function density(m) {
+  switch (m) {
+    case SAND: return 5;
+    case LAVA: return 4;
+    case WATER: return 3;
+    case ACID: return 3;
+    case OIL:  return 2;
+    case STEAM: return -2;
+    case SMOKE: return -1;
+    default: return 0;
+  }
+}
+
+// ─── Simulation Step ────────────────────────────────────────
+let gravityDir = 1;
+
+function simulate() {
+  updated.fill(0);
+
+  const yStart = gravityDir === 1 ? H - 1 : 0;
+  const yEnd   = gravityDir === 1 ? -1 : H;
+  const yStep  = gravityDir === 1 ? -1 : 1;
+  const leftToRight = Math.random() > 0.5;
+
+  for (let y = yStart; y !== yEnd; y += yStep) {
+    const xStart = leftToRight ? 0 : W - 1;
+    const xEnd   = leftToRight ? W : -1;
+    const xStep  = leftToRight ? 1 : -1;
+
+    for (let x = xStart; x !== xEnd; x += xStep) {
+      const i = idx(x, y);
+      if (updated[i]) continue;
+      const mat = grid[i];
+      if (mat === EMPTY || mat === STONE) continue;
+
+      const down = gravityDir;
+      const up   = -gravityDir;
+
+      switch (mat) {
+        case SAND: updateSand(x, y, down); break;
+        case WATER: updateLiquid(x, y, down, WATER); break;
+        case OIL: updateLiquid(x, y, down, OIL); break;
+        case ACID: updateAcid(x, y, down); break;
+        case LAVA: updateLava(x, y, down); break;
+        case FIRE: updateFire(x, y, up, i); break;
+        case STEAM: updateGas(x, y, up, STEAM, i); break;
+        case SMOKE: updateGas(x, y, up, SMOKE, i); break;
+        case WOOD: updateWood(x, y); break;
+        case PLANT: updatePlant(x, y); break;
+      }
+    }
+  }
+}
+
+function updateSand(x, y, down) {
+  const below = getCell(x, y + down);
+  if (isEmpty(below) || isLiquid(below) || isGas(below)) {
+    swap(x, y, x, y + down);
+    return;
+  }
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  const d1 = getCell(x + dir, y + down);
+  if ((isEmpty(d1) || isLiquid(d1) || isGas(d1)) && getCell(x + dir, y) !== STONE && getCell(x + dir, y) !== WOOD) {
+    swap(x, y, x + dir, y + down);
+    return;
+  }
+  const d2 = getCell(x - dir, y + down);
+  if ((isEmpty(d2) || isLiquid(d2) || isGas(d2)) && getCell(x - dir, y) !== STONE && getCell(x - dir, y) !== WOOD) {
+    swap(x, y, x - dir, y + down);
+  }
+}
+
+function updateLiquid(x, y, down, mat) {
+  const below = getCell(x, y + down);
+  if (isEmpty(below) || isGas(below)) {
+    swap(x, y, x, y + down);
+    return;
+  }
+  if (isLiquid(below) && density(mat) > density(below)) {
+    swap(x, y, x, y + down);
+    return;
+  }
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  const d1 = getCell(x + dir, y + down);
+  if (isEmpty(d1) || isGas(d1)) {
+    swap(x, y, x + dir, y + down);
+    return;
+  }
+  const d2 = getCell(x - dir, y + down);
+  if (isEmpty(d2) || isGas(d2)) {
+    swap(x, y, x - dir, y + down);
+    return;
+  }
+  const s1 = getCell(x + dir, y);
+  if (isEmpty(s1) || isGas(s1)) {
+    swap(x, y, x + dir, y);
+    return;
+  }
+  const s2 = getCell(x - dir, y);
+  if (isEmpty(s2) || isGas(s2)) {
+    swap(x, y, x - dir, y);
+  }
+}
+
+function updateAcid(x, y, down) {
+  const dirs = [[0,down],[1,0],[-1,0],[0,-down]];
+  for (const [dx,dy] of dirs) {
+    const nx = x+dx, ny = y+dy;
+    const neighbor = getCell(nx, ny);
+    if (neighbor > 0 && neighbor !== ACID && neighbor !== EMPTY && neighbor !== STONE && Math.random() < 0.05) {
+      setCell(nx, ny, EMPTY);
+      if (Math.random() < 0.4) { setCell(x, y, SMOKE); updated[idx(x,y)] = 1; }
+      else { setCell(x, y, EMPTY); }
+      return;
+    }
+  }
+  updateLiquid(x, y, down, ACID);
+}
+
+function updateLava(x, y, down) {
+  const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+  for (const [dx,dy] of dirs) {
+    const nx = x+dx, ny = y+dy;
+    const neighbor = getCell(nx, ny);
+    if (neighbor === WATER) {
+      setCell(nx, ny, STEAM);
+      if (Math.random() < 0.15) { setCell(x, y, STONE); updated[idx(x,y)] = 1; return; }
+    }
+    if (isFlammable(neighbor) && Math.random() < 0.08) {
+      setCell(nx, ny, FIRE);
+    }
+  }
+  updateLiquid(x, y, down, LAVA);
+  const i = idx(x, y);
+  if (grid[i] === LAVA) {
+    const flicker = (Math.random() * 40) | 0;
+    colorR[i] = Math.min(255, 200 + flicker);
+    colorG[i] = Math.max(0, 40 + flicker);
+    colorB[i] = 10;
+  }
+}
+
+function updateFire(x, y, up, i) {
+  life[i]--;
+  if (life[i] <= 0) {
+    if (Math.random() < 0.5) setCell(x, y, SMOKE);
+    else setCell(x, y, EMPTY);
+    return;
+  }
+  const t = life[i] / 80;
+  colorR[i] = Math.min(255, 200 + (Math.random() * 55) | 0);
+  colorG[i] = Math.min(255, (40 + t * 140 + Math.random() * 40) | 0);
+  colorB[i] = (Math.random() * 30) | 0;
+
+  const dirs = [[0,1],[0,-1],[1,0],[-1,0],[1,1],[-1,1],[1,-1],[-1,-1]];
+  for (const [dx,dy] of dirs) {
+    const nx = x+dx, ny = y+dy;
+    const neighbor = getCell(nx, ny);
+    if (isFlammable(neighbor) && Math.random() < 0.03) {
+      setCell(nx, ny, FIRE);
+    }
+    if (neighbor === WATER) {
+      setCell(nx, ny, STEAM);
+      setCell(x, y, SMOKE);
+      return;
+    }
+  }
+
+  const above = getCell(x, y + up);
+  if (isEmpty(above) || isGas(above)) {
+    if (Math.random() < 0.3) {
+      swap(x, y, x, y + up);
+    } else {
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      const sa = getCell(x+dir, y+up);
+      if (isEmpty(sa) || isGas(sa)) {
+        swap(x, y, x+dir, y+up);
+      }
+    }
+  }
+}
+
+function updateGas(x, y, up, mat, i) {
+  life[i]--;
+  if (life[i] <= 0) {
+    if (mat === STEAM && Math.random() < 0.35) {
+      setCell(x, y, WATER);
+    } else {
+      setCell(x, y, EMPTY);
+    }
+    return;
+  }
+
+  if (mat === SMOKE) {
+    const fade = life[i] / 120;
+    colorR[i] = (70 * fade) | 0;
+    colorG[i] = (70 * fade) | 0;
+    colorB[i] = (80 * fade) | 0;
+  }
+
+  const above = getCell(x, y + up);
+  if (isEmpty(above)) {
+    if (Math.random() < 0.6) swap(x, y, x, y + up);
+    return;
+  }
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  const s1 = getCell(x+dir, y);
+  if (isEmpty(s1)) { swap(x, y, x+dir, y); return; }
+  const s2 = getCell(x-dir, y);
+  if (isEmpty(s2)) { swap(x, y, x-dir, y); return; }
+  const da = getCell(x+dir, y+up);
+  if (isEmpty(da)) { swap(x, y, x+dir, y+up); }
+}
+
+function updateWood(x, y) {
+  // Static
+}
+
+function updatePlant(x, y) {
+  if (Math.random() > 0.005) return;
+  const dirs = [[0,1],[0,-1],[1,0],[-1,0]];
+  for (const [dx,dy] of dirs) {
+    const nx = x+dx, ny = y+dy;
+    if (getCell(nx, ny) === WATER) {
+      setCell(nx, ny, PLANT);
+      return;
+    }
+  }
+  if (Math.random() < 0.3) {
+    const [dx,dy] = dirs[(Math.random()*4)|0];
+    if (getCell(x+dx, y+dy) === EMPTY) {
+      setCell(x+dx, y+dy, PLANT);
+    }
+  }
+}
+
+// ─── Rendering ──────────────────────────────────────────────
+let imageData;
+
+function render() {
+  if (!imageData || imageData.width !== W || imageData.height !== H) {
+    imageData = ctx.createImageData(W, H);
+  }
+  const data = imageData.data;
+  const n = W * H;
+  for (let i = 0; i < n; i++) {
+    const p = i << 2;
+    if (grid[i] === EMPTY) {
+      data[p]     = 8;
+      data[p + 1] = 8;
+      data[p + 2] = 16;
+      data[p + 3] = 255;
+    } else {
+      data[p]     = colorR[i];
+      data[p + 1] = colorG[i];
+      data[p + 2] = colorB[i];
+      data[p + 3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// ─── Input Handling ─────────────────────────────────────────
+let selectedMat = SAND;
+let brushSize = 3;
+let mouseDown = false;
+let mouseX = -1, mouseY = -1;
+let paused = false;
+
+function canvasCoords(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  let clientX, clientY;
+  if (e.touches) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
+  }
+  return [
+    Math.floor((clientX - rect.left) * scaleX),
+    Math.floor((clientY - rect.top) * scaleY)
+  ];
+}
+
+function paint(cx, cy) {
+  const r = brushSize;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx*dx + dy*dy > r*r) continue;
+      const px = cx + dx;
+      const py = cy + dy;
+      if (!inBounds(px, py)) continue;
+      if (selectedMat === ERASER) {
+        setCell(px, py, EMPTY);
+      } else {
+        const cur = grid[idx(px, py)];
+        if (cur === EMPTY) {
+          // Sparse placement for flowing materials to look natural
+          if ((selectedMat === SAND || selectedMat === WATER || selectedMat === OIL || selectedMat === ACID || selectedMat === LAVA) && Math.random() > 0.65) continue;
+          setCell(px, py, selectedMat);
+        } else if (selectedMat === STONE || selectedMat === WOOD || selectedMat === PLANT) {
+          // Solids can overwrite anything
+          setCell(px, py, selectedMat);
+        }
+      }
+    }
+  }
+}
+
+function paintLine(x0, y0, x1, y1) {
+  const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  while (true) {
+    paint(x0, y0);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+canvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  mouseDown = true;
+  [mouseX, mouseY] = canvasCoords(e);
+  paint(mouseX, mouseY);
+});
+canvas.addEventListener('mousemove', e => {
+  if (!mouseDown) return;
+  const [nx, ny] = canvasCoords(e);
+  paintLine(mouseX, mouseY, nx, ny);
+  mouseX = nx; mouseY = ny;
+});
+canvas.addEventListener('mouseup', () => mouseDown = false);
+canvas.addEventListener('mouseleave', () => mouseDown = false);
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  mouseDown = true;
+  [mouseX, mouseY] = canvasCoords(e);
+  paint(mouseX, mouseY);
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!mouseDown) return;
+  const [nx, ny] = canvasCoords(e);
+  paintLine(mouseX, mouseY, nx, ny);
+  mouseX = nx; mouseY = ny;
+}, { passive: false });
+canvas.addEventListener('touchend', () => mouseDown = false);
+
+// Mouse wheel for brush size
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.deltaY < 0) brushSlider.value = Math.min(20, brushSize + 1);
+  else brushSlider.value = Math.max(1, brushSize - 1);
+  brushSlider.oninput();
+}, { passive: false });
+
+// ─── UI Setup ───────────────────────────────────────────────
+const toolbar = document.getElementById('toolbar');
+const matOrder = [SAND, WATER, STONE, FIRE, WOOD, OIL, STEAM, SMOKE, LAVA, PLANT, ACID, ERASER];
+const shortcutKeys = ['1','2','3','4','5','6','7','8','9','0','-','='];
+
+matOrder.forEach((id, index) => {
+  const m = MATERIALS[id];
+  const btn = document.createElement('button');
+  btn.className = 'mat-btn' + (id === selectedMat ? ' active' : '');
+  btn.dataset.mat = id;
+  const keyHint = shortcutKeys[index] || '';
+  btn.innerHTML = `<span class="swatch" style="background:${m.swatch}"></span>${m.name}<span class="shortcut-hint">${keyHint}</span>`;
+  btn.title = `${m.name}（快捷键 ${keyHint}）`;
+  btn.onclick = () => {
+    document.querySelectorAll('.mat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedMat = id;
+  };
+  toolbar.appendChild(btn);
+});
+
+const brushSlider = document.getElementById('brush-size');
+const brushVal = document.getElementById('brush-val');
+brushSlider.oninput = () => {
+  brushSize = +brushSlider.value;
+  brushVal.textContent = brushSize;
+};
+
+document.getElementById('btn-clear').onclick = () => {
+  initGrid();
+  if (challengeMode && currentLevel !== null) {
+    setupLevel(currentLevel);
+  }
+};
+
+document.getElementById('btn-pause').onclick = function() {
+  paused = !paused;
+  this.textContent = paused ? '▶ 继续' : '⏸ 暂停';
+};
+
+document.getElementById('btn-gravity').onclick = function() {
+  gravityDir *= -1;
+  this.textContent = gravityDir === 1 ? '⬇ 重力' : '⬆ 重力';
+};
+
+// ─── Help Panel ─────────────────────────────────────────────
+const helpOverlay = document.getElementById('help-overlay');
+document.getElementById('btn-help').onclick = () => helpOverlay.classList.toggle('show');
+document.getElementById('help-close').onclick = () => helpOverlay.classList.remove('show');
+helpOverlay.addEventListener('click', e => {
+  if (e.target === helpOverlay) helpOverlay.classList.remove('show');
+});
+
+// ─── Challenge Mode ─────────────────────────────────────────
+let challengeMode = false;
+let currentLevel = null;
+let levelCompleted = {};  // { 0: true, 1: true, ... }
+let winShown = false;
+
+// Try load progress from localStorage
+try {
+  const saved = localStorage.getItem('fallingsand_progress');
+  if (saved) levelCompleted = JSON.parse(saved);
+} catch(e) {}
+
+function saveProgress() {
+  try { localStorage.setItem('fallingsand_progress', JSON.stringify(levelCompleted)); } catch(e) {}
+}
+
+const LEVELS = [
+  {
+    id: 0,
+    title: '第一关：蓄水池',
+    desc: '用石头画一个容器，然后用水填满到目标线以上！',
+    goal: '将水填满到画面高度40%以上',
+    setup(W, H) {
+      // Draw a container with stone walls (U shape)
+      const cx = Math.floor(W / 2);
+      const bw = Math.floor(W * 0.3); // half width
+      const bottom = H - 5;
+      const wallH = Math.floor(H * 0.5);
+      // Bottom wall
+      for (let x = cx - bw; x <= cx + bw; x++) {
+        for (let t = 0; t < 3; t++) setCell(x, bottom - t, STONE);
+      }
+      // Left wall
+      for (let y = bottom; y >= bottom - wallH; y--) {
+        for (let t = 0; t < 3; t++) setCell(cx - bw + t, y, STONE);
+      }
+      // Right wall
+      for (let y = bottom; y >= bottom - wallH; y--) {
+        for (let t = 0; t < 3; t++) setCell(cx + bw - t, y, STONE);
+      }
+    },
+    check(W, H) {
+      // Count water in the top 40% of the screen
+      const targetY = Math.floor(H * 0.4);
+      let waterAbove = 0;
+      for (let y = 0; y <= targetY; y++) {
+        for (let x = 0; x < W; x++) {
+          if (grid[idx(x, y)] === WATER) waterAbove++;
+        }
+      }
+      // Total water count
+      let totalWater = 0;
+      for (let i = 0; i < W * H; i++) if (grid[i] === WATER) totalWater++;
+      return totalWater > 200 && waterAbove > 30;
+    },
+    targetLineY: 0.4, // as fraction from top
+    targetLabel: '🎯 目标水位线',
+  },
+  {
+    id: 1,
+    title: '第二关：烈焰焚林',
+    desc: '点燃画面上所有的木头！让它们全部燃烧殆尽。',
+    goal: '让所有木头都被烧掉（剩余<5块）',
+    setup(W, H) {
+      // Place scattered wood blocks
+      const positions = [];
+      for (let i = 0; i < 12; i++) {
+        const bx = 15 + Math.floor(Math.random() * (W - 30));
+        const by = 10 + Math.floor(Math.random() * (H - 30));
+        positions.push([bx, by]);
+        // Each wood block is a small cluster
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -3; dx <= 3; dx++) {
+            if (Math.abs(dx) + Math.abs(dy) <= 4) {
+              setCell(bx + dx, by + dy, WOOD);
+            }
+          }
+        }
+      }
+    },
+    check(W, H) {
+      let woodCount = 0;
+      for (let i = 0; i < W * H; i++) if (grid[i] === WOOD) woodCount++;
+      return woodCount < 5;
+    },
+    progressFn(W, H) {
+      let woodCount = 0;
+      for (let i = 0; i < W * H; i++) if (grid[i] === WOOD) woodCount++;
+      return `剩余木头: ${woodCount}`;
+    }
+  },
+  {
+    id: 2,
+    title: '第三关：绿意盎然',
+    desc: '利用水让植物生长到目标线以上！在底部种植物，用水灌溉。',
+    goal: '让植物生长到画面顶部25%区域',
+    setup(W, H) {
+      // Place a line of plant at the bottom
+      const bottom = H - 3;
+      for (let x = Math.floor(W * 0.2); x < Math.floor(W * 0.8); x++) {
+        setCell(x, bottom, PLANT);
+        setCell(x, bottom - 1, PLANT);
+      }
+      // Floor
+      for (let x = 0; x < W; x++) {
+        setCell(x, H - 1, STONE);
+        setCell(x, H - 2, STONE);
+      }
+    },
+    check(W, H) {
+      const targetY = Math.floor(H * 0.25);
+      let plantAbove = 0;
+      for (let y = 0; y <= targetY; y++) {
+        for (let x = 0; x < W; x++) {
+          if (grid[idx(x, y)] === PLANT) plantAbove++;
+        }
+      }
+      return plantAbove >= 15;
+    },
+    targetLineY: 0.25,
+    targetLabel: '🎯 目标生长线',
+    progressFn(W, H) {
+      const targetY = Math.floor(H * 0.25);
+      let plantAbove = 0;
+      for (let y = 0; y <= targetY; y++) {
+        for (let x = 0; x < W; x++) {
+          if (grid[idx(x, y)] === PLANT) plantAbove++;
+        }
+      }
+      return `目标区植物: ${plantAbove}/15`;
+    }
+  },
+  {
+    id: 3,
+    title: '第四关：酸液围城',
+    desc: '用石头建造围墙来围堵酸液，不让它扩散到画面两侧边缘！',
+    goal: '酸液不能接触画面左右边缘（持续5秒）',
+    setup(W, H) {
+      // Place acid pool in the center
+      const cx = Math.floor(W / 2);
+      for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -8; dx <= 8; dx++) {
+          const px = cx + dx, py = Math.floor(H * 0.5) + dy;
+          if (inBounds(px, py)) setCell(px, py, ACID);
+        }
+      }
+      // Floor
+      for (let x = 0; x < W; x++) {
+        setCell(x, H - 1, STONE);
+        setCell(x, H - 2, STONE);
+      }
+    },
+    check(W, H) {
+      // No acid at edges
+      for (let y = 0; y < H; y++) {
+        if (grid[idx(0, y)] === ACID || grid[idx(1, y)] === ACID) return false;
+        if (grid[idx(W-1, y)] === ACID || grid[idx(W-2, y)] === ACID) return false;
+      }
+      // Must still have some acid
+      let acidCount = 0;
+      for (let i = 0; i < W * H; i++) if (grid[i] === ACID) acidCount++;
+      return acidCount > 10;
+    },
+    _timer: 0,
+    progressFn(W, H) {
+      let atEdge = false;
+      for (let y = 0; y < H; y++) {
+        if (grid[idx(0, y)] === ACID || grid[idx(1, y)] === ACID ||
+            grid[idx(W-1, y)] === ACID || grid[idx(W-2, y)] === ACID) {
+          atEdge = true; break;
+        }
+      }
+      if (atEdge) {
+        LEVELS[3]._timer = 0;
+        return '状态：酸液已触及边缘！⚠️';
+      } else {
+        LEVELS[3]._timer++;
+        const sec = Math.floor(LEVELS[3]._timer / 60);
+        return `围堵中: ${sec}/5 秒`;
+      }
+    },
+    checkWin(W, H) {
+      // Need 5 seconds (~300 frames at 60fps)
+      return LEVELS[3]._timer >= 300;
+    }
+  },
+  {
+    id: 4,
+    title: '第五关：岩浆来袭',
+    desc: '保护底部的木屋！用石头和水阻挡从上方降下的熔岩。',
+    goal: '坚持20秒，木屋保留一半以上的木头',
+    setup(W, H) {
+      // Build a small wooden house at the bottom
+      const cx = Math.floor(W / 2);
+      const base = H - 4;
+      // House walls
+      for (let dy = 0; dy < 12; dy++) {
+        setCell(cx - 10, base - dy, WOOD);
+        setCell(cx - 9, base - dy, WOOD);
+        setCell(cx + 10, base - dy, WOOD);
+        setCell(cx + 9, base - dy, WOOD);
+      }
+      // House roof
+      for (let dx = -10; dx <= 10; dx++) {
+        setCell(cx + dx, base - 12, WOOD);
+        setCell(cx + dx, base - 11, WOOD);
+      }
+      // Floor under house
+      for (let dx = -12; dx <= 12; dx++) {
+        setCell(cx + dx, base + 1, STONE);
+        setCell(cx + dx, base + 2, STONE);
+      }
+      // Floor sides
+      for (let x = 0; x < W; x++) {
+        setCell(x, H - 1, STONE);
+        setCell(x, H - 2, STONE);
+      }
+      // Count initial wood
+      let wc = 0;
+      for (let i = 0; i < W * H; i++) if (grid[i] === WOOD) wc++;
+      LEVELS[4]._initialWood = wc;
+      LEVELS[4]._timer = 0;
+      LEVELS[4]._lavaSpawnTimer = 0;
+    },
+    check(W, H) {
+      return false; // Use checkWin
+    },
+    checkWin(W, H) {
+      LEVELS[4]._timer++;
+      // Spawn lava from top every ~40 frames
+      LEVELS[4]._lavaSpawnTimer++;
+      if (LEVELS[4]._lavaSpawnTimer >= 40) {
+        LEVELS[4]._lavaSpawnTimer = 0;
+        const lx = 10 + Math.floor(Math.random() * (W - 20));
+        for (let dx = -2; dx <= 2; dx++) {
+          if (inBounds(lx + dx, 0) && grid[idx(lx+dx, 0)] === EMPTY) {
+            setCell(lx + dx, 0, LAVA);
+          }
+        }
+      }
+      // Check survival: 20 sec ~ 1200 frames
+      if (LEVELS[4]._timer >= 1200) {
+        let wc = 0;
+        for (let i = 0; i < W * H; i++) if (grid[i] === WOOD) wc++;
+        return wc >= Math.floor((LEVELS[4]._initialWood || 1) * 0.5);
+      }
+      return false;
+    },
+    progressFn(W, H) {
+      let wc = 0;
+      for (let i = 0; i < W * H; i++) if (grid[i] === WOOD) wc++;
+      const sec = Math.floor((LEVELS[4]._timer || 0) / 60);
+      const init = LEVELS[4]._initialWood || 1;
+      const pct = Math.round(wc / init * 100);
+      return `时间: ${sec}/20秒 | 木头: ${pct}%`;
+    },
+    _initialWood: 0,
+    _timer: 0,
+    _lavaSpawnTimer: 0,
+  }
+];
+
+// Level select UI
+const levelSelectOverlay = document.getElementById('level-select-overlay');
+const levelList = document.getElementById('level-list');
+const challengeBar = document.getElementById('challenge-bar');
+
+function renderLevelList() {
+  levelList.innerHTML = '';
+  LEVELS.forEach((lv, i) => {
+    const done = !!levelCompleted[i];
+    const card = document.createElement('div');
+    card.className = 'level-card' + (done ? ' completed' : '');
+    card.innerHTML = `
+      <div class="level-num">${i + 1}</div>
+      <div class="level-info">
+        <h4>${lv.title}</h4>
+        <p>${lv.desc}</p>
+      </div>
+      <div class="level-status">${done ? '🌟' : '▶'}</div>
+    `;
+    card.onclick = () => startLevel(i);
+    levelList.appendChild(card);
+  });
+}
+
+document.getElementById('btn-challenge').onclick = () => {
+  renderLevelList();
+  levelSelectOverlay.classList.add('show');
+};
+document.getElementById('level-select-close').onclick = () => levelSelectOverlay.classList.remove('show');
+levelSelectOverlay.addEventListener('click', e => {
+  if (e.target === levelSelectOverlay) levelSelectOverlay.classList.remove('show');
+});
+document.getElementById('btn-back-sandbox').onclick = () => {
+  exitChallengeMode();
+  levelSelectOverlay.classList.remove('show');
+};
+document.getElementById('btn-quit-challenge').onclick = () => {
+  exitChallengeMode();
+};
+
+function setupLevel(levelIdx) {
+  initGrid();
+  const lv = LEVELS[levelIdx];
+  if (lv.setup) lv.setup(W, H);
+  // Reset timers
+  if (lv._timer !== undefined) lv._timer = 0;
+  if (lv._lavaSpawnTimer !== undefined) lv._lavaSpawnTimer = 0;
+  // Update target line
+  updateTargetLine(lv);
+}
+
+function startLevel(levelIdx) {
+  currentLevel = levelIdx;
+  challengeMode = true;
+  winShown = false;
+  levelSelectOverlay.classList.remove('show');
+
+  const lv = LEVELS[levelIdx];
+  document.getElementById('ch-title').textContent = lv.title;
+  document.getElementById('ch-desc').textContent = lv.goal;
+  document.getElementById('ch-progress').textContent = '';
+  challengeBar.classList.add('show');
+  document.getElementById('btn-challenge').classList.add('mode-active');
+  document.getElementById('btn-challenge').textContent = '🏆 挑战中…';
+
+  setupLevel(levelIdx);
+
+  // Unpause if paused
+  if (paused) {
+    paused = false;
+    document.getElementById('btn-pause').textContent = '⏸ 暂停';
+  }
+}
+
+function exitChallengeMode() {
+  challengeMode = false;
+  currentLevel = null;
+  winShown = false;
+  challengeBar.classList.remove('show');
+  document.getElementById('btn-challenge').classList.remove('mode-active');
+  document.getElementById('btn-challenge').textContent = '🏆 挑战模式';
+  removeTargetLine();
+  initGrid();
+}
+
+function updateTargetLine(lv) {
+  removeTargetLine();
+  if (lv.targetLineY !== undefined) {
+    const wrap = document.getElementById('canvas-wrap');
+    const canvasRect = canvas.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const line = document.createElement('div');
+    line.className = 'target-line';
+    line.id = 'target-line';
+    const topOffset = canvasRect.top - wrapRect.top;
+    const canvasDisplayH = canvasRect.height;
+    line.style.top = (topOffset + canvasDisplayH * lv.targetLineY) + 'px';
+    line.style.left = (canvasRect.left - wrapRect.left) + 'px';
+    line.style.right = (wrapRect.right - canvasRect.right) + 'px';
+    line.dataset.label = lv.targetLabel || '🎯 目标线';
+    wrap.appendChild(line);
+  }
+}
+
+function removeTargetLine() {
+  const existing = document.getElementById('target-line');
+  if (existing) existing.remove();
+}
+
+function checkChallengeWin() {
+  if (!challengeMode || currentLevel === null || winShown) return;
+  const lv = LEVELS[currentLevel];
+
+  // Update progress display
+  if (lv.progressFn) {
+    document.getElementById('ch-progress').textContent = lv.progressFn(W, H);
+  }
+
+  // Check win
+  let won = false;
+  if (lv.checkWin) {
+    won = lv.checkWin(W, H);
+  } else {
+    won = lv.check(W, H);
+  }
+
+  if (won) {
+    winShown = true;
+    levelCompleted[currentLevel] = true;
+    saveProgress();
+    showWinBanner();
+  }
+}
+
+function showWinBanner() {
+  const lv = LEVELS[currentLevel];
+  document.getElementById('win-title').textContent = '🎉 恭喜通关！';
+  document.getElementById('win-desc').textContent = lv.title + ' — 完成！';
+  const banner = document.getElementById('win-banner');
+  banner.classList.add('show');
+
+  // Show/hide next button
+  const nextBtn = document.getElementById('win-next');
+  if (currentLevel < LEVELS.length - 1) {
+    nextBtn.style.display = '';
+    nextBtn.textContent = '下一关 ▶';
+  } else {
+    nextBtn.style.display = '';
+    nextBtn.textContent = '🎊 全部通关！';
+  }
+}
+
+document.getElementById('win-next').onclick = () => {
+  document.getElementById('win-banner').classList.remove('show');
+  if (currentLevel < LEVELS.length - 1) {
+    startLevel(currentLevel + 1);
+  } else {
+    // All done
+    exitChallengeMode();
+    renderLevelList();
+    levelSelectOverlay.classList.add('show');
+  }
+};
+
+document.getElementById('win-menu').onclick = () => {
+  document.getElementById('win-banner').classList.remove('show');
+  renderLevelList();
+  levelSelectOverlay.classList.add('show');
+};
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  // Material shortcuts: 1-9, 0, -, =
+  const keyMap = {'1':0,'2':1,'3':2,'4':3,'5':4,'6':5,'7':6,'8':7,'9':8,'0':9,'-':10,'=':11};
+  if (e.key in keyMap) {
+    const idx = keyMap[e.key];
+    if (idx < matOrder.length) {
+      const id = matOrder[idx];
+      document.querySelectorAll('.mat-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector(`[data-mat="${id}"]`).classList.add('active');
+      selectedMat = id;
+    }
+  }
+  if (e.key === ' ') { e.preventDefault(); document.getElementById('btn-pause').click(); }
+  if (e.key === '[') { brushSlider.value = Math.max(1, brushSize - 1); brushSlider.oninput(); }
+  if (e.key === ']') { brushSlider.value = Math.min(20, brushSize + 1); brushSlider.oninput(); }
+  if (e.key === 'h' || e.key === 'H') { helpOverlay.classList.toggle('show'); }
+  if (e.key === 'Escape') {
+    helpOverlay.classList.remove('show');
+    levelSelectOverlay.classList.remove('show');
+    document.getElementById('win-banner').classList.remove('show');
+  }
+});
+
+// ─── Main Loop ──────────────────────────────────────────────
+const statsEl = document.getElementById('stats');
+let frameCount = 0;
+let lastFpsTime = performance.now();
+let fps = 0;
+let challengeCheckCounter = 0;
+
+function countParticles() {
+  let c = 0;
+  const n = W * H;
+  for (let i = 0; i < n; i++) if (grid[i] !== EMPTY) c++;
+  return c;
+}
+
+function loop() {
+  const now = performance.now();
+  frameCount++;
+  if (now - lastFpsTime >= 500) {
+    fps = (frameCount / ((now - lastFpsTime) / 1000)) | 0;
+    frameCount = 0;
+    lastFpsTime = now;
+    const modeText = challengeMode ? ' · 🏆 挑战模式' : ' · 🏖️ 沙盒模式';
+    statsEl.textContent = `${fps} 帧/秒 · ${countParticles().toLocaleString()} 粒子 · ${W}×${H}${modeText}`;
+  }
+
+  if (!paused) {
+    simulate();
+    // Check challenge win every 10 frames for performance
+    if (challengeMode) {
+      challengeCheckCounter++;
+      if (challengeCheckCounter >= 10) {
+        challengeCheckCounter = 0;
+        checkChallengeWin();
+      }
+      // Level 5 special: spawn lava even during check frames
+      if (currentLevel === 4 && !winShown) {
+        const lv = LEVELS[4];
+        // Already handled in checkWin, but ensure timer ticks every frame
+      }
+    }
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ─── Init ───────────────────────────────────────────────────
+resize();
+window.addEventListener('resize', () => {
+  resize();
+  if (challengeMode && currentLevel !== null) {
+    // Re-position target line after resize
+    const lv = LEVELS[currentLevel];
+    updateTargetLine(lv);
+  }
+});
+loop();
+</script>
+</body>
+</html>
